@@ -4,21 +4,20 @@
 #include <unistd.h>
 #include "alloc.h"
 
-#define META_BLOCKS 512  // max 512 blocks metadata (enough for 4KB / 8 = 512)
+#define META_BLOCKS 512
 
 typedef struct block {
-	size_t offset;        // Offset into mem_start
-	size_t size;          // Size of the block
-	int free;             // 1 = free, 0 = allocated
-	int next;             // Index of next block (-1 if none)
-	int prev;             // Index of previous block (-1 if none)
+	size_t offset;
+	size_t size;
+	int free;
+	int next;
+	int prev;
 } block_t;
 
-static void *mem_start = NULL;     // Start of 4KB user page
-static block_t *meta_start = NULL; // Start of 4KB metadata page
-static int head = -1;              // Head index in meta_start
+static void *mem_start = NULL;
+static block_t *meta_start = NULL;
+static int head = -1;
 
-// Align to 8 bytes
 static size_t align8(size_t size) {
 	return (size + 7) & ~7;
 }
@@ -35,7 +34,6 @@ int init_alloc() {
 		return -1;
 	}
 
-	// Initialize metadata
 	block_t *blocks = (block_t *)meta_start;
 	blocks[0].offset = 0;
 	blocks[0].size = PAGESIZE;
@@ -60,7 +58,6 @@ int cleanup() {
 	return 0;
 }
 
-// Find a free block and optionally split it
 char *alloc(int size) {
 	if (size <= 0 || size % 8 != 0) {
 		return NULL;
@@ -72,9 +69,7 @@ char *alloc(int size) {
 
 	while (curr != -1) {
 		if (blocks[curr].free && blocks[curr].size >= size) {
-			// Split if necessary
 			if (blocks[curr].size > size) {
-				// Find free block slot
 				int new_block = -1;
 				for (int i = 1; i < META_BLOCKS; i++) {
 					if (blocks[i].size == 0 && blocks[i].offset == 0) {
@@ -83,7 +78,7 @@ char *alloc(int size) {
 					}
 				}
 				if (new_block == -1) {
-					return NULL; // No metadata slot available
+					return NULL;
 				}
 
 				blocks[new_block].offset = blocks[curr].offset + size;
@@ -105,7 +100,7 @@ char *alloc(int size) {
 		}
 		curr = blocks[curr].next;
 	}
-	return NULL; // No suitable block found
+	return NULL;
 }
 
 void dealloc(char *ptr) {
@@ -121,7 +116,6 @@ void dealloc(char *ptr) {
 		if (blocks[curr].offset == offset) {
 			blocks[curr].free = 1;
 
-			// Merge with next
 			if (blocks[curr].next != -1 && blocks[blocks[curr].next].free) {
 				int next = blocks[curr].next;
 				blocks[curr].size += blocks[next].size;
@@ -129,7 +123,6 @@ void dealloc(char *ptr) {
 				if (blocks[next].next != -1)
 					blocks[blocks[next].next].prev = curr;
 
-				// Clear next block
 				blocks[next].offset = 0;
 				blocks[next].size = 0;
 				blocks[next].free = 0;
@@ -137,7 +130,6 @@ void dealloc(char *ptr) {
 				blocks[next].prev = -1;
 			}
 
-			// Merge with prev
 			if (blocks[curr].prev != -1 && blocks[blocks[curr].prev].free) {
 				int prev = blocks[curr].prev;
 				blocks[prev].size += blocks[curr].size;
@@ -145,7 +137,6 @@ void dealloc(char *ptr) {
 				if (blocks[curr].next != -1)
 					blocks[blocks[curr].next].prev = prev;
 
-				// Clear current block
 				blocks[curr].offset = 0;
 				blocks[curr].size = 0;
 				blocks[curr].free = 0;
